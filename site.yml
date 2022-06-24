@@ -13,12 +13,14 @@
           ansible.builtin.get_url:
             url: "https://packages.clickhouse.com/rpm/stable/{{ item }}-{{ clickhouse_version }}.noarch.rpm"
             dest: "./{{ item }}-{{ clickhouse_version }}.rpm"
+            mode: 0774
           with_items: "{{ clickhouse_packages }}"
       rescue:
         - name: Get clickhouse distrib
           ansible.builtin.get_url:
             url: "https://packages.clickhouse.com/rpm/stable/clickhouse-common-static-{{ clickhouse_version }}.x86_64.rpm"
             dest: "./clickhouse-common-static-{{ clickhouse_version }}.rpm"
+            mode: 0774
     - name: Install clickhouse packages
       become: true
       ansible.builtin.yum:
@@ -27,8 +29,63 @@
           - clickhouse-client-{{ clickhouse_version }}.rpm
           - clickhouse-server-{{ clickhouse_version }}.rpm
       notify: Start clickhouse service
+
+  post_tasks:
     - name: Create database
       ansible.builtin.command: "clickhouse-client -q 'create database logs;'"
       register: create_db
       failed_when: create_db.rc != 0 and create_db.rc !=82
       changed_when: create_db.rc == 0
+
+- name: Install Vector
+  hosts: clickhouse
+  handlers:
+    - name: start vector
+      become: true
+      ansible.builtin.service:
+        name: vector
+        state: restarted
+  tasks:
+    - name: fix curl problem
+      become: true
+      ansible.builtin.command: "sysctl net.ipv6.conf.default.disable_ipv6=1 net.ipv6.conf.all.disable_ipv6=1  net.ipv6.conf.lo.disable_ipv6=1"
+      tags:
+        - prepare
+
+    - name: fix ca serts
+      become: true
+      ansible.builtin.yum: 
+        name: ca-certificates
+        state: latest
+      tags:
+        - prepare
+
+    - name: fetch repository   
+      get_url: 
+        url: "https://repositories.timber.io/public/vector/cfg/setup/bash.rpm.sh"
+        dest: "./bash.rpm.sh"
+        mode: 0700
+
+    - name: update repo list
+      become: true
+      ansible.builtin.command: "./bash.rpm.sh"
+
+    - name: install vector package
+      become: true
+      ansible.builtin.yum:
+        name: vector
+        state: installed
+      notify: start vector 
+    
+
+# yum install -y  ca-certificates
+
+# sudo sysctl net.ipv6.conf.default.disable_ipv6=1
+# sudo sysctl net.ipv6.conf.all.disable_ipv6=1
+# sudo sysctl net.ipv6.conf.lo.disable_ipv6=1
+# curl -1sLf 'https://repositories.timber.io/public/vector/cfg/setup/bash.rpm.sh'   | sudo -E bash
+# sudo yum install -y  vector
+# sudo systemctl start vector
+
+
+
