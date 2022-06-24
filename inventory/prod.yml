@@ -2,4 +2,7 @@
 clickhouse:
   hosts:
     clickhouse-01:
-      ansible_host: <IP_here>
+      ansible_host: 192.168.192.10
+      ansible_user: vagrant
+      ansible_connection: ssh
+      ansible_password: "{{ clickhouse_password }}"
